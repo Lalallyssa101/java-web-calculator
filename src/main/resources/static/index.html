@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pink Star Calculator</title>
+<style>
+  :root {
+    --hot: #ff1493;
+    --deep: #d6006e;
+    --plum: #8c0046;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body { margin: 0; }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    background: #cd005f;
+    overflow-x: hidden;
+  }
+
+  #bg {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    display: block;
+  }
+
+  .card {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 420px);
+    padding: 20px;
+    border-radius: 36px;
+    background: rgba(120, 0, 60, 0.42);
+    border: 2px solid rgba(255, 255, 255, 0.9);
+    box-shadow:
+      0 0 0 5px rgba(255, 255, 255, 0.08),
+      0 0 30px rgba(255, 255, 255, 0.25),
+      0 20px 50px rgba(90, 0, 45, 0.45);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+  }
+
+  .display {
+    position: relative;
+    height: 150px;
+    margin-bottom: 16px;
+    padding: 14px 20px;
+    border-radius: 26px;
+    border: 2px solid #fff;
+    background: linear-gradient(180deg, #ff32a0, #d70069);
+    box-shadow: 0 0 18px rgba(255, 255, 255, 0.35);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-end;
+    overflow: hidden;
+  }
+
+  .equation {
+    min-height: 30px;
+    font-size: 24px;
+    color: #ffe4f2;
+    white-space: nowrap;
+    text-shadow: 1px 2px 0 rgba(90, 0, 45, 0.45);
+  }
+
+  .result {
+    font-size: 62px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    white-space: nowrap;
+    text-shadow: 1px 2px 0 rgba(90, 0, 45, 0.45);
+  }
+
+  .mem {
+    position: absolute;
+    top: 12px;
+    left: 18px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .mem.on { opacity: 0.9; }
+
+  .keys {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  button.key {
+    position: relative;
+    aspect-ratio: 1;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    font-family: inherit;
+    font-size: clamp(16px, 4.8vw, 22px);
+    font-weight: 700;
+    cursor: pointer;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 0 rgba(90, 0, 45, 0.35), 0 0 10px rgba(255, 255, 255, 0.28);
+    transition: transform 0.06s, box-shadow 0.06s, filter 0.12s;
+  }
+
+  button.key::after {
+    content: "";
+    position: absolute;
+    top: 4%;
+    left: 12%;
+    width: 76%;
+    height: 48%;
+    border-radius: 50%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+    pointer-events: none;
+  }
+
+  button.key:hover {
+    filter: brightness(1.07);
+    box-shadow: 0 4px 0 rgba(90, 0, 45, 0.35), 0 0 16px rgba(255, 255, 255, 0.6);
+  }
+
+  button.key:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 rgba(90, 0, 45, 0.35), 0 0 8px rgba(255, 255, 255, 0.3);
+  }
+
+  button.key:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+
+  .num { background: linear-gradient(180deg, #ffffff, #cdd0dc); color: var(--hot); }
+  .fn  { background: linear-gradient(180deg, #ebedf5, #aaafc3); color: var(--plum); }
+  .op  { background: linear-gradient(180deg, #ff50af, #d6006e); color: #fff; }
+  .eq  { background: linear-gradient(180deg, #ff5ab4, #eb0078); color: #fff; }
+</style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+
+  <main class="card">
+    <div class="display" id="display">
+      <div class="mem" id="mem">M</div>
+      <div class="equation" id="equation"></div>
+      <div class="result" id="result">0</div>
+    </div>
+    <div class="keys" id="keys"></div>
+  </main>
+
+<script>
+/* ---------- Floating stars background ---------- */
+(function () {
+  const canvas = document.getElementById('bg');
+  const ctx = canvas.getContext('2d');
+  const reduce = window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let W = 0, H = 0, tick = 0, last = 0, stars = [];
+
+  function makeStar() {
+    const r = Math.random();
+    return {
+      x: Math.random() * W,
+      y: Math.random() * H,
+      size: r < 0.25 ? 30 + Math.random() * 18
+          : r < 0.6  ? 16 + Math.random() * 10
+          :             7 + Math.random() * 6,
+      vx: (Math.random() - 0.35) * 0.7,
+      vy: -(0.25 + Math.random() * 0.9),
+      rot: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.012,
+      phase: Math.random() * 10
+    };
+  }
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const want = Math.max(24, Math.min(60, Math.round(W * H / 20000)));
+    while (stars.length < want) stars.push(makeStar());
+    if (stars.length > want) stars.length = want;
+
+    if (reduce) draw();
+  }
+
+  function starPath(cx, cy, size, rot) {
+    ctx.beginPath();
+    for (let p = 0; p < 10; p++) {
+      const angle = rot - Math.PI / 2 + p * Math.PI / 5;
+      const radius = p % 2 === 0 ? size : size * 0.48;
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+      if (p === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+
+  function update(d) {
+    for (const s of stars) {
+      s.x += (s.vx + Math.sin(tick * 0.02 + s.phase) * 0.35) * d;
+      s.y += s.vy * d;
+      s.rot += s.rotSpeed * d;
+
+      const m = s.size + 20;
+      if (s.y < -m) { s.y = H + m; s.x = Math.random() * W; }
+      if (s.x < -m) s.x = W + m;
+      if (s.x > W + m) s.x = -m;
+    }
+  }
+
+  function draw() {
+    // Deep pink at the top, lighter hot pink at the bottom
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, 'rgb(205,0,95)');
+    g.addColorStop(1, 'rgb(255,85,175)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // Slowly drifting checkerboard
+    const tile = 48;
+    const off = (tick * 0.25) % (tile * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    for (let y = -tile * 2; y < H + tile; y += tile) {
+      for (let x = -tile * 2; x < W + tile; x += tile) {
+        const cx = Math.floor((x + off) / tile);
+        const cy = Math.floor(y / tile);
+        if (((cx + cy) & 1) === 0) ctx.fillRect(x + off, y, tile, tile);
+      }
+    }
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (const s of stars) {
+      const big = s.size >= 28;
+      const lineW = big ? 6 : s.size >= 15 ? 3.4 : 2;
+
+      // Neon glow
+      for (let k = 4; k >= 1; k--) {
+        starPath(s.x, s.y, s.size, s.rot);
+        ctx.strokeStyle = 'rgba(255,255,255,' + (big ? 0.086 : 0.055) + ')';
+        ctx.lineWidth = lineW + k * (big ? 5 : 3);
+        ctx.stroke();
+      }
+
+      // Pink fill
+      const fill = ctx.createLinearGradient(0, s.y - s.size, 0, s.y + s.size);
+      fill.addColorStop(0, 'rgb(255,45,160)');
+      fill.addColorStop(1, 'rgb(205,0,105)');
+      starPath(s.x, s.y, s.size, s.rot);
+      ctx.fillStyle = fill;
+      ctx.fill();
+
+      // White outline
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = lineW;
+      ctx.stroke();
+    }
+  }
+
+  function loop(now) {
+    const d = last ? Math.min((now - last) / 16.667, 3) : 1;
+    last = now;
+    tick += d;
+    update(d);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  if (!reduce) requestAnimationFrame(loop);
+})();
+
+/* ---------- Calculator ---------- */
+const OPS = ['+', '−', '×', '÷'];
+const MINUS = '−';
+
+let expression = '';
+let memory = '0';
+let justEvaluated = false;
+let lastEquation = '';
+let previewText = '';
+let previewSeq = 0;
+
+const equationEl = document.getElementById('equation');
+const resultEl = document.getElementById('result');
+const memEl = document.getElementById('mem');
+
+const isOp = c => OPS.indexOf(c) !== -1;
+const lastChar = s => s.charAt(s.length - 1);
+
+function hasOperator(s) {
+  for (let i = 0; i < s.length; i++) {
+    if (isOp(s[i]) && !(i === 0 && s[i] === MINUS)) return true;
+  }
+  return false;
+}
+
+function trimOps(s) {
+  while (s && isOp(lastChar(s))) s = s.slice(0, -1);
+  return s;
+}
+
+function currentNumber() {
+  let i = expression.length - 1;
+  while (i >= 0 && !isOp(expression[i])) i--;
+  return expression.slice(i + 1);
+}
+
+function clearCurrentNumber() {
+  while (expression && !isOp(lastChar(expression))) {
+    expression = expression.slice(0, -1);
+  }
+}
+
+function toggleSign() {
+  if (!expression) { expression = MINUS; return; }
+
+  let start = expression.length - 1;
+  while (start >= 0 && !isOp(expression[start])) start--;
+  start++;
+
+  const number = expression.slice(start);
+  if (!number) return;
+
+  if (start > 0 && expression[start - 1] === MINUS &&
+      (start - 1 === 0 || isOp(expression[start - 2]))) {
+    expression = expression.slice(0, start - 1) + number;
+  } else {
+    expression = expression.slice(0, start) + MINUS + number;
+  }
+}
+
+// 38670÷50000 -> 38,670÷50,000
+function pretty(text) {
+  return text.replace(/\d+(?:\.\d*)?/g, function (m) {
+    const i = m.indexOf('.');
+    const whole = i < 0 ? m : m.slice(0, i);
+    const rest = i < 0 ? '' : m.slice(i);
+    return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + rest;
+  });
+}
+
+// Ask the Java backend to do the math
+async function api(expr) {
+  const response = await fetch('/evaluate?expression=' + encodeURIComponent(expr));
+  return response.json();
+}
+
+// Shrink text to fit the display; trim from the left if still too long
+function fit(el, text, max, min, trimLeft) {
+  const limit = el.parentElement.clientWidth - 40;
+  let size = max;
+
+  el.textContent = text;
+  el.style.fontSize = size + 'px';
+
+  while (el.offsetWidth > limit && size > min) {
+    size--;
+    el.style.fontSize = size + 'px';
+  }
+
+  if (trimLeft && el.offsetWidth > limit) {
+    let t = text;
+    while (t.length > 1 && el.offsetWidth > limit) {
+      t = t.slice(1);
+      el.textContent = '…' + t;
+    }
+  }
+}
+
+function render() {
+  let equation = '';
+  let result;
+
+  if (justEvaluated) {
+    equation = pretty(lastEquation);
+    result = pretty(expression);
+  } else if (!expression) {
+    result = '0';
+  } else if (expression === 'Error') {
+    result = 'Error';
+  } else if (hasOperator(expression)) {
+    equation = pretty(expression);
+    result = previewText || pretty(currentNumber() || '0');
+  } else {
+    result = pretty(expression);
+  }
+
+  fit(equationEl, equation, 24, 13, true);
+  fit(resultEl, result, 62, 22, false);
+  memEl.classList.toggle('on', memory !== '0');
+}
+
+// Live result while typing
+async function refreshPreview() {
+  if (justEvaluated || !hasOperator(expression)) {
+    previewText = '';
+    return;
+  }
+
+  const mine = ++previewSeq;
+  const fallback = pretty(currentNumber() || '0');
+
+  try {
+    const data = await api(trimOps(expression));
+    if (mine !== previewSeq) return;
+    previewText = data.error ? fallback : pretty(data.result);
+  } catch (e) {
+    if (mine !== previewSeq) return;
+    previewText = fallback;
+  }
+
+  render();
+}
+
+async function memoryAdd(op) {
+  try {
+    const current = await api(trimOps(expression) || '0');
+    if (current.error) return;
+
+    const next = await api(memory + op + current.result);
+    if (!next.error) memory = next.result;
+  } catch (e) { /* ignore, like the desktop version */ }
+}
+
+async function apply(key) {
+  const isDigit = /^[0-9.]$/.test(key);
+
+  // Typing a number right after "=" starts a fresh calculation
+  if (justEvaluated && isDigit) expression = '';
+
+  // Most keys leave the "finished result" view
+  if (key !== '=' && key !== 'M+' && key !== 'M-') justEvaluated = false;
+
+  if (key === 'AC') {
+    expression = '';
+    return;
+  }
+
+  if (key === 'CE') {
+    clearCurrentNumber();
+    return;
+  }
+
+  if (key === 'M+') { await memoryAdd('+'); return; }
+  if (key === 'M-') { await memoryAdd(MINUS); return; }
+
+  if (key === 'MR') {
+    expression += memory;
+    return;
+  }
+
+  if (key === '⌫') {
+    expression = expression.slice(0, -1);
+    return;
+  }
+
+  if (key === '%') {
+    const eq = trimOps(expression);
+    if (!eq) return;
+
+    try {
+      const r = await api(eq);
+      if (r.error) return;
+
+      const p = await api(r.result + '÷100');
+      if (p.error) return;
+
+      expression = p.result;
+      lastEquation = eq + '%';
+      justEvaluated = true;
+    } catch (e) { /* ignore */ }
+    return;
+  }
+
+  if (key === '+/−') {
+    toggleSign();
+    return;
+  }
+
+  if (isDigit) {
+    if (expression === 'Error') expression = '';
+
+    if (key === '.') {
+      if (currentNumber().indexOf('.') !== -1) return;
+      if (currentNumber() === '') expression += '0';
+    }
+
+    expression += key;
+    return;
+  }
+
+  if (key === '=') {
+    if (justEvaluated) return;
+
+    // Ignore a trailing operator, like 5+ then =
+    const eq = trimOps(expression);
+    const hadOperator = hasOperator(eq);
+
+    try {
+      const r = await api(eq);
+      if (r.error) throw new Error(r.error);
+
+      expression = r.result;
+
+      if (hadOperator) {
+        lastEquation = eq;
+        justEvaluated = true;
+      }
+    } catch (e) {
+      expression = 'Error';
+    }
+    return;
+  }
+
+  if (isOp(key)) {
+    if (!expression || expression === 'Error') {
+      if (key === MINUS) expression = MINUS;
+      return;
+    }
+
+    if (expression === MINUS) return;
+
+    if (isOp(lastChar(expression))) expression = expression.slice(0, -1);
+    expression += key;
+  }
+}
+
+async function press(key) {
+  await apply(key);
+  render();
+  refreshPreview();
+}
+
+// Keep fast key presses in order while the server answers
+let chain = Promise.resolve();
+function enqueue(key) {
+  chain = chain.then(function () { return press(key); });
+}
+
+/* ---------- Build the keypad ---------- */
+const labels = [
+  'MR', 'M+', 'M-', '⌫',
+  'AC', 'CE', '%', '÷',
+  '7', '8', '9', '×',
+  '4', '5', '6', '−',
+  '1', '2', '3', '+',
+  '+/−', '0', '.', '='
+];
+
+const keysEl = document.getElementById('keys');
+
+labels.forEach(function (label) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = label;
+
+  let cls = 'num';
+  if (label === '=') cls = 'eq';
+  else if (OPS.indexOf(label) !== -1) cls = 'op';
+  else if (['MR', 'M+', 'M-', 'AC', 'CE', '%', '⌫'].indexOf(label) !== -1) cls = 'fn';
+
+  b.className = 'key ' + cls;
+  b.addEventListener('click', function () { enqueue(label); });
+  keysEl.appendChild(b);
+});
+
+/* ---------- Keyboard support ---------- */
+document.addEventListener('keydown', function (e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const k = e.key;
+  let m = null;
+
+  if (/^[0-9.]$/.test(k)) m = k;
+  else if (k === '+') m = '+';
+  else if (k === '-') m = MINUS;
+  else if (k === '*' || k === 'x' || k === 'X') m = '×';
+  else if (k === '/') { m = '÷'; e.preventDefault(); }
+  else if (k === 'Enter' || k === '=') { m = '='; e.preventDefault(); }
+  else if (k === 'Backspace') m = '⌫';
+  else if (k === 'Escape') m = 'AC';
+  else if (k === '%') m = '%';
+
+  if (m) enqueue(m);
+});
+
+window.addEventListener('resize', render);
+render();
+</script>
+</body>
+</html>
